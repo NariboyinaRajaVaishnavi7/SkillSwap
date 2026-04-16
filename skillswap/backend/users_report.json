@@ -1,0 +1,131 @@
+[
+  {
+    "_id": "69c2c54c864d4e9e94b06cd7",
+    "name": "sia",
+    "teach": [
+      {
+        "name": "java",
+        "proficiency": "Beginner"
+      }
+    ],
+    "learn": [
+      "python"
+    ]
+  },
+  {
+    "_id": "69c2d3bc864d4e9e94b06ce0",
+    "name": "renu",
+    "teach": [
+      {
+        "name": "Python",
+        "proficiency": "Intermediate"
+      }
+    ],
+    "learn": [
+      "Java"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69c5d20427d8e1499acd7c16",
+    "name": "hi",
+    "teach": [],
+    "learn": [],
+    "careerGoal": "web developer"
+  },
+  {
+    "_id": "69c5d36d27d8e1499acd7c1f",
+    "name": "hello",
+    "teach": [],
+    "learn": [],
+    "careerGoal": "Web Developer"
+  },
+  {
+    "_id": "69c5d55c27d8e1499acd7c2c",
+    "name": "k",
+    "teach": [],
+    "learn": [],
+    "careerGoal": "Web Developer"
+  },
+  {
+    "_id": "69c5e01674932f7b0b0f1d6e",
+    "name": "i",
+    "teach": [],
+    "learn": [],
+    "careerGoal": "Web Developer"
+  },
+  {
+    "_id": "69c5e09774932f7b0b0f1d7b",
+    "name": "u",
+    "teach": [
+      {
+        "name": "HTML",
+        "proficiency": "Intermediate"
+      }
+    ],
+    "learn": [],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69c5e0f774932f7b0b0f1d86",
+    "name": "l",
+    "teach": [
+      {
+        "name": "Css",
+        "proficiency": "Intermediate"
+      },
+      {
+        "name": "HTML",
+        "proficiency": "Beginner"
+      }
+    ],
+    "learn": [],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69c7a7164d111c2983abd8a6",
+    "name": "kriti",
+    "teach": [],
+    "learn": [],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69c8a828b1da88f0c3003c95",
+    "name": "keerti",
+    "teach": [
+      {
+        "name": "Data Structures",
+        "proficiency": "Intermediate"
+      }
+    ],
+    "learn": [],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69c8a9c7b1da88f0c3003ca2",
+    "name": "kavya",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69d064e8c041c5b36a180037",
+    "name": "fa",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69d0663d1f91955224db6831",
+    "name": "b",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  }
+]

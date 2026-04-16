@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { io } from "socket.io-client";
 
 // ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
 const css = `
@@ -334,6 +335,26 @@ const css = `
   .resource-by { font-size: 12px; color: var(--mid); }
   .resource-thumb { height: 120px; background: var(--sand); border-radius: var(--radius-sm); margin-bottom: 14px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
 
+  /* ── VIDEO SECTION ── */
+  .video-list-wrap { display: flex; flex-direction: column; gap: 32px; }
+  .video-form-card { background: #fff; border-radius: var(--radius-lg); padding: 32px; border: 1px solid var(--border); box-shadow: 0 4px 12px var(--shadow); margin-bottom: 40px; }
+  .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
+  .video-card { background: #fff; border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; transition: all 0.3s ease; display: flex; flex-direction: column; }
+  .video-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px var(--shadow-md); border-color: var(--terracotta-light); }
+  .video-player-container { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; }
+  .video-player-container video { width: 100%; height: 100%; object-fit: contain; }
+  .video-content { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+  .video-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--charcoal); margin-bottom: 8px; }
+  .video-skill { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--terracotta); background: #FFF0E8; padding: 4px 12px; border-radius: 100px; display: inline-block; width: fit-content; margin-bottom: 12px; }
+  
+  .course-list { display: flex; flex-direction: column; gap: 16px; }
+  .course-item { display: flex; background: #fff; border-radius: var(--radius); border: 1px solid var(--border); padding: 12px; gap: 16px; align-items: center; cursor: pointer; transition: all 0.2s; }
+  .course-item:hover { border-color: var(--terracotta); background: var(--warm-white); }
+  .course-item-thumb { width: 140px; aspect-ratio: 16/9; background: var(--sand); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .course-item-info { flex: 1; }
+  .course-item-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .course-item-skill { font-size: 12px; color: var(--mid); }
+
   /* ── RATING ── */
   .rating-modal-overlay { position: fixed; inset: 0; background: rgba(44,44,44,0.5); display: flex; align-items: center; justify-content: center; z-index: 200; }
   .rating-modal { background: #fff; border-radius: var(--radius-lg); padding: 40px; width: 480px; }
@@ -364,6 +385,14 @@ const css = `
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  .badge-card:hover .badge-tooltip { opacity: 1 !important; }
+  @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0; } 100% { transform: scale(1); opacity: 0; } }
+  @keyframes pulse-border {
+    0% { border-bottom-color: var(--border); }
+    50% { border-bottom-color: var(--terracotta-light); }
+    100% { border-bottom-color: var(--border); }
+  }
+
   @media (max-width: 768px) {
     .hero { grid-template-columns: 1fr; padding: 60px 24px; }
     .hero h1 { font-size: 40px; }
@@ -374,6 +403,9 @@ const css = `
     .stats-grid { grid-template-columns: repeat(2,1fr); }
     .dashboard-layout { grid-template-columns: 1fr; }
     .sidebar { display: none; }
+    .video-grid { grid-template-columns: 1fr; }
+    .course-item { flex-direction: column; align-items: flex-start; }
+    .course-item-thumb { width: 100%; }
   }
 `;
 
@@ -387,14 +419,8 @@ const SAMPLE_USERS = [
   { id:102, name: "Priya", emoji:"👩‍💻", bio: "Python developer interested in Java.", teach: ["Python"], learn: ["Java"], rating: 4.8, sessions: 25, location: "Mumbai", method: "Video call", category: "Data" },
 ];
 
-const RESOURCES = [
-  { id:1, type:"video", title:"Figma Auto-Layout Deep Dive", by:"Priya Sharma", skill:"UI/UX Design", emoji:"🎨", duration:"24 min" },
-  { id:2, type:"pdf", title:"Python for Beginners — Complete Guide", by:"Marcus Chen", skill:"Python", emoji:"🐍", pages:"48 pages" },
-  { id:3, type:"notes", title:"React Hooks Cheatsheet", by:"James Park", skill:"React", emoji:"⚛️", words:"1,800 words" },
-  { id:4, type:"video", title:"System Design Fundamentals", by:"Marcus Chen", skill:"System Design", emoji:"🖥️", duration:"52 min" },
-  { id:5, type:"pdf", title:"Introduction to Data Science", by:"Aisha Okonkwo", skill:"Data Science", emoji:"📊", pages:"92 pages" },
-  { id:6, type:"video", title:"Docker & Kubernetes Crash Course", by:"Lena Müller", skill:"DevOps", emoji:"🐳", duration:"38 min" },
-];
+// No hardcoded resources - now fetched from database
+const RESOURCES = [];
 
 const MESSAGES_DATA = {
   1: [
@@ -417,7 +443,7 @@ function Toast({ toasts }) {
 // ─── NAV ──────────────────────────────────────────────────────────────────────
 function Nav({ page, setPage, authed, user }) {
   const pages = authed
-    ? [["dashboard","Dashboard"],["browse","Browse"],["messages","Messages"],["schedule","Schedule"],["resources","Resources"]]
+    ? [["dashboard","Dashboard"],["browse","Browse"],["messages","Messages"],["schedule","Schedule"],["videos","Learning Hub"],["resources","Resources"]]
     : [];
   return (
     <nav>
@@ -587,6 +613,8 @@ function Landing({ setPage }) {
   );
 }
 
+const API_URL = "http://127.0.0.1:5000";
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 function Auth({ mode, setPage, onAuth, addToast }) {
   const [form, setForm] = useState({email:"",password:"",name:""});
@@ -595,7 +623,7 @@ function Auth({ mode, setPage, onAuth, addToast }) {
     if(!form.email||!form.password||((!isLogin)&&!form.name)) { addToast("Please fill all fields","info","⚠️"); return; }
     try {
       const endpoint = isLogin ? "/login" : "/signup";
-      const res = await fetch(`http://localhost:5000${endpoint}`, {
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: form.email, password: form.password, name: form.name })
       });
@@ -659,7 +687,7 @@ function ProfileSetup({ user, setUser, setPage, addToast }) {
   const done = async () => { 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/profile`, {
+      const res = await fetch(`${API_URL}/profile`, {
         method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ ...form, teach: teachSkills, learn: learnSkills })
       });
@@ -758,6 +786,7 @@ function DashLayout({ page, setPage, children }) {
     ["dashboard","🏠","Dashboard"],
     ["browse","🔍","Browse matches"],
     ["messages","💬","Messages"],
+    ["videos","📺","Learning Hub"],
     ["schedule","📅","Schedule"],
     ["resources","📚","Resources"],
     ["profile","👤","My Profile"],
@@ -783,13 +812,147 @@ function DashLayout({ page, setPage, children }) {
 }
 
 // ─── DASHBOARD HOME ───────────────────────────────────────────────────────────
-function Dashboard({ user, setPage }) {
+function Dashboard({ user, setPage, addToast }) {
+  const [requests, setRequests] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [recentMatches, setRecentMatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ matchCount: "0", sessionsDone: "0", rating: "5.0", progress: "0%", goal: "your goal" });
+
+  const fetchRequests = () => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/connections`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        const incoming = data.filter(c => c.receiver?._id === user.id && c.status === "pending");
+        setRequests(incoming);
+      })
+      .catch(err => console.error(err));
+  };
+
+  const fetchStats = () => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/dashboard-stats`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        setStats(data);
+      })
+      .catch(err => console.error("Error fetching stats:", err));
+  };
+
+  const fetchSessions = () => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/sessions`, { headers: { "Authorization": `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => { setSessions(data); setLoading(false); })
+      .catch(err => { console.error(err); setLoading(false); });
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchRequests();
+      fetchStats();
+      fetchSessions();
+      fetchRecentMatches();
+    }
+  }, [user]);
+
+  const fetchRecentMatches = () => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/connections`, { headers: { "Authorization": `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => {
+        const accepted = data.filter(c => c.status === "accepted");
+        setRecentMatches(accepted);
+      })
+      .catch(err => console.error(err));
+  };
+
+  const handleRequest = async (id, status) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/connections/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) throw new Error("Failed to update request");
+      addToast(`Match ${status}!`, "success", "✅");
+      fetchRequests();
+      fetchStats(); // Refresh stats when connection is accepted
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    }
+  };
+
   return (
     <DashLayout page="dashboard" setPage={setPage}>
       <div className="page-title">Welcome back, {user?.name?.split(" ")[0]} {user?.emoji}</div>
       <div className="page-sub">Here's what's happening in your skill community.</div>
+      
+      {requests.length > 0 && (
+        <div style={{background: "#FFF8EE", border: "1px solid var(--amber-light)", borderRadius: "var(--radius-lg)", padding: "24px", marginBottom: "32px", animation: "slideUp 0.4s ease"}}>
+          <div style={{fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 600, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px"}}>
+            <span>📬</span> Match Requests ({requests.length})
+          </div>
+          <div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
+            {requests.map(req => (
+              <div key={req._id} style={{background: "#fff", padding: "16px", borderRadius: "12px", display: "flex", alignItems: "center", gap: "16px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)"}}>
+                <div style={{fontSize: "24px"}}>{req.requester.emoji}</div>
+                <div style={{flex: 1}}>
+                  <div style={{fontWeight: 600}}>{req.requester.name} wants to swap skills!</div>
+                  <div style={{fontSize: "13px", color: "var(--mid)"}}>They teach: {req.requester.teach.map(s => s.name||s).join(", ")}</div>
+                  {req.requesterFeedbacks && req.requesterFeedbacks.length > 0 && (
+                    <div style={{marginTop: "8px", borderTop: "1px dashed var(--border)", paddingTop: "8px"}}>
+                      <div style={{fontSize: "11px", fontWeight: 600, color: "var(--light-mid)", textTransform: "uppercase", marginBottom: "4px"}}>Recent Feedback:</div>
+                      {req.requesterFeedbacks.map((f, i) => (
+                        <div key={i} style={{fontSize: "12px", fontStyle: "italic", color: "var(--charcoal)", marginBottom: "2px"}}>
+                          "{f.text && f.text.length > 60 ? f.text.substring(0, 57) + "..." : (f.text || "No text feedback")}" — {f.student?.name || f.from?.name || "Peer"}
+                          {f.isDefault && <span style={{fontSize: "9px", color: "var(--light-mid)", marginLeft: "4px"}}>(Demo Review)</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(!req.requesterFeedbacks || req.requesterFeedbacks.every(f => f.isDefault)) && (
+                    <div style={{fontSize: "11px", color: "var(--terracotta)", marginTop: "4px", fontWeight: 600}}>
+                      ⚠️ User is in demo mode. Requirements may vary.
+                    </div>
+                  )}
+                  {req.requesterFeedbacks && !req.requesterFeedbacks.every(f => f.isDefault) && req.requesterFeedbacks.length < 2 && (
+                    <div style={{fontSize: "11px", color: "var(--terracotta)", marginTop: "4px", fontWeight: 600}}>
+                      ⚠️ This user needs more verified feedback to be eligible.
+                    </div>
+                  )}
+                </div>
+                <div style={{display: "flex", gap: "8px"}}>
+                  <button 
+                    className="btn btn-primary btn-sm" 
+                    onClick={() => handleRequest(req._id, "accepted")}
+                    disabled={req.requesterFeedbacks && req.requesterFeedbacks.length > 0 && req.requesterFeedbacks.some(f => f.isDefault) ? false : (!req.requesterFeedbacks || req.requesterFeedbacks.length < 2)}
+                    style={{...(req.requesterFeedbacks && req.requesterFeedbacks.length > 0 && req.requesterFeedbacks.some(f => f.isDefault) ? {} : (!req.requesterFeedbacks || req.requesterFeedbacks.length < 2) ? {opacity: 0.5, cursor: "not-allowed"} : {})}}
+                  >
+                    Accept
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => handleRequest(req._id, "rejected")}>Decline</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="stats-grid">
-        {[["🔗","3","Skill matches","↑ 2 new today"],["✅","7","Sessions done","↑ 1 this week"],["⭐","4.9","Your rating","Based on 7 reviews"],["📈","62%","Progress","Toward Python goal"]].map(([icon,val,label,change])=>(
+        {[
+          ["🔗", stats.matchCount, "Skill matches", "Active connections"],
+          ["✅", stats.sessionsDone, "Sessions done", "Learning milestones"],
+          ["⭐", stats.rating, "Your rating", "From your peers"],
+          ["📈", stats.progress, "Progress", `Toward ${stats.goal}`]
+        ].map(([icon,val,label,change])=>(
           <div key={label} className="stat-card">
             <div className="stat-icon">{icon}</div>
             <div className="stat-value">{val}</div>
@@ -800,14 +963,55 @@ function Dashboard({ user, setPage }) {
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
         <div style={{background:"#fff",borderRadius:"var(--radius-lg)",padding:24,border:"1px solid var(--border)"}}>
-          <div style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:600,marginBottom:16}}>Upcoming sessions</div>
-          <div style={{color:"var(--mid)",fontSize:"14px",padding:"20px 0",textAlign:"center"}}>No upcoming sessions booked yet.</div>
-          <button className="btn btn-secondary btn-sm" style={{marginTop:16}} onClick={()=>setPage("schedule")}>View calendar →</button>
+          <div style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:600,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            Upcoming sessions
+            <button className="btn btn-ghost btn-sm" onClick={()=>setPage("schedule")} style={{fontSize:13}}>View all ↗</button>
+          </div>
+          {sessions.length > 0 ? (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {sessions.slice(0, 3).map(s => {
+                const peer = s.teacher?._id === user.id ? s.student : s.teacher;
+                if (!peer) return null;
+                return (
+                  <div key={s._id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid var(--border-light)"}}>
+                    <div style={{fontSize:20,width:36,height:36,background:"var(--cream)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>{peer.emoji || "🙂"}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:14}}>{peer.name}</div>
+                      <div style={{fontSize:12,color:"var(--mid)"}}>{s.skill}</div>
+                    </div>
+                    <div style={{textAlign:"right",fontSize:11}}>
+                      <div style={{fontWeight:600}}>{s.date}</div>
+                      <div style={{color:"var(--mid)"}}>{s.time}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{color:"var(--mid)",fontSize:"14px",padding:"20px 0",textAlign:"center"}}>No upcoming sessions booked yet.</div>
+          )}
         </div>
         <div style={{background:"#fff",borderRadius:"var(--radius-lg)",padding:24,border:"1px solid var(--border)"}}>
-          <div style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:600,marginBottom:16}}>Recent matches</div>
-          <div style={{color:"var(--mid)",fontSize:"14px",padding:"20px 0",textAlign:"center"}}>No new matches based on your skills yet. Check the Browse section!</div>
-          <button className="btn btn-secondary btn-sm" style={{marginTop:16}} onClick={()=>setPage("browse")}>Go to Browse →</button>
+          <div style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:600,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            Recent matches
+            <button className="btn btn-ghost btn-sm" onClick={()=>setPage("browse")} style={{fontSize:13}}>Explore ↗</button>
+          </div>
+          {recentMatches.length > 0 ? (
+            <div style={{display:"flex",overflowX:"auto",gap:16,paddingBottom:8}}>
+              {recentMatches.slice(0, 5).map(m => {
+                const peer = m.requester._id === user.id ? m.receiver : m.requester;
+                if (!peer) return null;
+                return (
+                  <div key={m._id} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,minWidth:80}}>
+                    <div style={{fontSize:28,width:52,height:52,background:"var(--warm-white)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--border)"}}>{peer.emoji || "🙂"}</div>
+                    <div style={{fontSize:12,fontWeight:600,textAlign:"center"}}>{peer.name?.split(" ")[0]}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{color:"var(--mid)",fontSize:"14px",padding:"20px 0",textAlign:"center"}}>No new matches based on your skills yet. Check the Browse section!</div>
+          )}
         </div>
       </div>
     </DashLayout>
@@ -817,22 +1021,48 @@ function Dashboard({ user, setPage }) {
 // ─── BROWSE ───────────────────────────────────────────────────────────────────
 function Browse({ setPage, setSelectedUser, addToast, user }) {
   const [matches, setMatches] = useState([]);
+  const [connections, setConnections] = useState([]);
   const [requiredSkills, setRequiredSkills] = useState([]);
   const [loadingSkills, setLoadingSkills] = useState(true);
   const [loadingMatches, setLoadingMatches] = useState(true);
 
+  const fetchConnections = () => {
+    const token = localStorage.getItem("token");
+    fetch("http://localhost:5000/connections", {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setConnections(data))
+      .catch(err => console.error(err));
+  };
+
+  const connectUser = async (targetId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ targetUserId: targetId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      addToast("Request sent!", "success", "📬");
+      fetchConnections();
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem("token");
-    fetch("http://localhost:5000/matches", {
+    fetchConnections();
+    fetch(`${API_URL}/matches`, {
       headers: { "Authorization": `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => {
-        // Show required skills immediately
         setRequiredSkills(data.requiredSkills || []);
         setLoadingSkills(false);
-        
-        // Delay showing actual matches so user has time to read the skills
         setTimeout(() => {
           setMatches(data.matches || []);
           setLoadingMatches(false);
@@ -844,6 +1074,11 @@ function Browse({ setPage, setSelectedUser, addToast, user }) {
         setLoadingMatches(false);
       });
   }, [user]);
+
+  const getConnectionStatus = (targetId) => {
+    const conn = connections.find(c => (c.requester._id === targetId || c.receiver._id === targetId));
+    return conn ? conn.status : null;
+  };
 
   return (
     <DashLayout page="browse" setPage={setPage}>
@@ -877,30 +1112,59 @@ function Browse({ setPage, setSelectedUser, addToast, user }) {
              <p style={{color: "var(--mid)", marginTop: 8}}>Looking for swappers wanting to learn what you teach...</p>
           </div>
         ) : matches.length > 0 ? (
-          matches.map(matchedUser => (
-            <div key={matchedUser._id} style={{animation: "slideUp 0.4s ease"}} className="match-card" onClick={() => {setSelectedUser(matchedUser); setPage("userprofile");}}>
-              <div className="match-card-top">
-                <div className="match-avatar" style={{fontSize: 26}}>{matchedUser.emoji || "🙂"}</div>
-                <div>
-                  <div className="match-name">{matchedUser.name}</div>
-                  <div className="match-meta">📍 {matchedUser.location || "Remote"}</div>
+          matches.map(matchedUser => {
+            const status = getConnectionStatus(matchedUser._id);
+            return (
+              <div key={matchedUser._id} style={{animation: "slideUp 0.4s ease"}} className="match-card" onClick={() => {setSelectedUser(matchedUser); setPage("userprofile");}}>
+                <div className="match-card-top">
+                  <div className="match-avatar" style={{fontSize: 26}}>{matchedUser.emoji || "🙂"}</div>
+                  <div>
+                    <div className="match-name">{matchedUser.name}</div>
+                    <div className="match-meta">📍 {matchedUser.location || "Remote"}</div>
+                  </div>
+                  <span className="match-score-badge">{matchedUser.matchCount} skill(s) match!</span>
                 </div>
-                <span className="match-score-badge">{matchedUser.matchCount} skill(s) match!</span>
+                <div className="match-skills">
+                  <div className="match-skills-label">Teaches</div>
+                  <div>{(matchedUser.teach || []).map((s,i) => <span key={i} className="skill-pill pill-teach">{s.name||s}</span>)}</div>
+                </div>
+                <div className="match-skills">
+                  <div className="match-skills-label">Learning</div>
+                  <div>{(matchedUser.learn || []).map((s,i) => <span key={i} className="skill-pill pill-learn">{s.name||s}</span>)}</div>
+                </div>
+                {matchedUser.feedbacks && matchedUser.feedbacks.length > 0 && (
+                  <div style={{background: "var(--warm-white)", padding: "12px", borderRadius: "12px", marginBottom: "16px", border: "1px solid var(--border-light)"}}>
+                    <div className="match-skills-label">Social Proof</div>
+                    {matchedUser.feedbacks.map((f, i) => (
+                      <div key={i} style={{fontSize: "12px", color: "var(--mid)", marginBottom: "4px", borderBottom: i < matchedUser.feedbacks.length - 1 ? "1px solid #eee" : "none", paddingBottom: "4px"}}>
+                        <span style={{color: "var(--amber)"}}>{"★".repeat(f.rating)}</span> "{f.text && f.text.length > 50 ? f.text.substring(0, 47) + "..." : (f.text || "No text feedback")}"
+                        {f.isDefault && <span style={{fontSize: "9px", color: "var(--light-mid)", marginLeft: "4px"}}>(Demo)</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {matchedUser.feedbacks && matchedUser.feedbacks.some(f => f.isDefault) ? (
+                   <div style={{fontSize: "11px", color: "var(--mid)", fontStyle: "italic", marginBottom: "16px"}}>
+                     Verified peer status: <span style={{color: "var(--amber)", fontWeight: 700}}>Pending</span>
+                   </div>
+                ) : (!matchedUser.feedbacks || matchedUser.feedbacks.length < 2) && (
+                   <div style={{fontSize: "11px", color: "var(--mid)", fontStyle: "italic", marginBottom: "16px"}}>
+                     Needs {2 - (matchedUser.feedbacks?.length || 0)} more feedback(s) to become a verified match.
+                   </div>
+                )}
+                <div className="match-card-actions">
+                  {status === "accepted" ? (
+                    <button className="btn btn-primary btn-sm" onClick={e => {e.stopPropagation(); setPage("messages");}}>💬 Message</button>
+                  ) : status === "pending" ? (
+                    <button className="btn btn-secondary btn-sm" disabled style={{opacity:0.7}}>⌛ Request Pending</button>
+                  ) : (
+                    <button className="btn btn-sage btn-sm" onClick={e => {e.stopPropagation(); connectUser(matchedUser._id);}}>🤝 Request Match</button>
+                  )}
+                  <div style={{marginLeft: "auto", fontSize: 13, color: "var(--amber)", fontWeight: 600}}>★ {matchedUser.rating || "New"}</div>
+                </div>
               </div>
-              <div className="match-skills">
-                <div className="match-skills-label">Teaches</div>
-                <div>{(matchedUser.teach || []).map((s,i) => <span key={i} className="skill-pill pill-teach">{s.name||s}</span>)}</div>
-              </div>
-              <div className="match-skills">
-                <div className="match-skills-label">Learning</div>
-                <div>{(matchedUser.learn || []).map((s,i) => <span key={i} className="skill-pill pill-learn">{s.name||s}</span>)}</div>
-              </div>
-              <div className="match-card-actions">
-                <button className="btn btn-primary btn-sm" onClick={e => {e.stopPropagation(); addToast(`Message sent to ${matchedUser.name}!`, "success", "✉️"); setPage("messages");}}>💬 Message</button>
-                <div style={{marginLeft: "auto", fontSize: 13, color: "var(--amber)", fontWeight: 600}}>★ {matchedUser.rating || "New"}</div>
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div style={{gridColumn: "1/-1", textAlign: "center", padding: "60px 20px", color: "var(--mid)", background: "var(--warm-white)", borderRadius: "var(--radius-lg)", border: "1px dashed var(--border)", animation: "slideUp 0.4s ease"}}>
             <div style={{fontSize: "40px", marginBottom: "16px"}}>🤷‍♂️</div>
@@ -915,8 +1179,49 @@ function Browse({ setPage, setSelectedUser, addToast, user }) {
 
 // ─── USER PROFILE ─────────────────────────────────────────────────────────────
 function UserProfile({ u, setPage, addToast }) {
-  const [showRating, setShowRating] = useState(false);
-  if(!u) u = SAMPLE_USERS[0];
+  const [reviews, setReviews] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [userVideos, setUserVideos] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!u) return;
+
+    // Fetch reviews
+    fetch(`${API_URL}/reviews/${u._id}`)
+      .then(res => res.json())
+      .then(data => { setReviews(data); setLoadingReviews(false); })
+      .catch(err => console.error(err));
+    
+    // Check connection status
+    fetch(`${API_URL}/connections`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        const conn = data.find(c => (c.requester?._id === u._id || c.receiver?._id === u._id) && c.status === "accepted");
+        setIsConnected(!!conn);
+      });
+
+    // Fetch authorized videos
+    fetch(`${API_URL}/videos`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        const filtered = data.filter(v => 
+          v.uploadedBy && (v.uploadedBy._id === u._id || v.uploadedBy === u._id)
+        );
+        setUserVideos(filtered);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [u]);
+
+  if (!u) return <div>User not found.</div>;
+
   return (
     <DashLayout page="browse" setPage={setPage}>
       <div style={{maxWidth:700}}>
@@ -930,83 +1235,247 @@ function UserProfile({ u, setPage, addToast }) {
             {(u.teach || []).map((s,i)=><span key={i} className="skill-pill pill-teach" style={{fontSize:13}}>🎓 {s.name||s}</span>)}
             {(u.learn || []).map((s,i)=><span key={i} className="skill-pill pill-learn" style={{fontSize:13}}>📖 {s.name||s}</span>)}
           </div>
-          <div className="rating-display" style={{marginTop:12}}><span style={{color:"var(--amber)"}}>{"★".repeat(Math.floor(u.rating || 5))}</span><span style={{fontWeight:600,marginLeft:4}}>{u.rating || "5.0"}</span><span style={{color:"var(--mid)",fontSize:13}}>({u.sessions || 0} sessions)</span></div>
+          <div className="rating-display" style={{marginTop:12}}>
+            {u.sessions > 0 ? (
+              <>
+                <span style={{color:"var(--amber)"}}>{"★".repeat(Math.floor(u.rating || 5))}</span>
+                <span style={{fontWeight:600,marginLeft:4}}>{(u.rating || 5.0).toFixed(1)}</span>
+                <span style={{color:"var(--mid)",fontSize:13,marginLeft:4}}>({u.sessions} sessions)</span>
+              </>
+            ) : (
+              <span style={{color:"var(--mid)",fontSize:13,fontStyle:"italic"}}>No sessions yet — be the first to book!</span>
+            )}
+          </div>
           <div style={{marginTop:16,display:"flex",gap:10}}>
             <button className="btn btn-primary btn-sm" onClick={()=>{addToast("Opening chat...","info","💬");setPage("messages");}}>💬 Message</button>
             <button className="btn btn-sage btn-sm" onClick={()=>{addToast("Opening scheduler...","info","📅");setPage("schedule");}}>📅 Book session</button>
-            <button className="btn btn-secondary btn-sm" onClick={()=>setShowRating(true)}>⭐ Rate</button>
           </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginTop:24}}>
-          <div style={{background:"#fff",borderRadius:"var(--radius)",padding:20,border:"1px solid var(--border)"}}>
-            <div style={{fontWeight:600,marginBottom:12}}>Teaches</div>
-            {(u.teach || []).map((s,i)=><span key={i} className="skill-pill pill-teach" style={{margin:3}}>{s.name||s}</span>)}
-          </div>
-          <div style={{background:"#fff",borderRadius:"var(--radius)",padding:20,border:"1px solid var(--border)"}}>
-            <div style={{fontWeight:600,marginBottom:12}}>Learning</div>
-            {(u.learn || []).map((s,i)=><span key={i} className="skill-pill pill-learn" style={{margin:3}}>{s.name||s}</span>)}
-          </div>
-        </div>
-        <div style={{background:"#fff",borderRadius:"var(--radius)",padding:20,border:"1px solid var(--border)",marginTop:24}}>
-          <div style={{fontWeight:600,marginBottom:16}}>Reviews</div>
-          {[{name:"Jamie L.",text:"Amazing teacher, very patient and clear explanations!",rating:5},{name:"Sam K.",text:"Really helpful session. Would swap again!",rating:5}].map(r=>(
-            <div key={r.name} style={{borderBottom:"1px solid var(--border)",paddingBottom:14,marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
-                <div style={{fontWeight:600,fontSize:14}}>{r.name}</div>
-                <div style={{color:"var(--amber)"}}>{" ★".repeat(r.rating)}</div>
-              </div>
-              <div style={{fontSize:14,color:"var(--mid)",marginTop:4}}>{r.text}</div>
+
+        {u.badges && u.badges.length > 0 && (
+          <div style={{background:"#fff",borderRadius:"var(--radius)",padding:24,border:"1px solid var(--border)",marginTop:32}}>
+            <div style={{fontWeight:600,fontSize:18,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+              <span>🏆</span> Badges & Achievements
             </div>
-          ))}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:16}}>
+              {u.badges.map((b,i)=>(
+                <div key={i} className="badge-card" style={{
+                  padding:16, borderRadius:16, background:"var(--warm-white)", border:"1px solid var(--border-light)", textAlign:"center",
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:8
+                }} title={b.description}>
+                  <div style={{fontSize:32}}>{b.icon}</div>
+                  <div style={{fontWeight:700, fontSize:13}}>{b.name}</div>
+                  <div style={{fontSize:11, color:"var(--mid)"}}>{b.category}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{background:"#fff",borderRadius:"var(--radius)",padding:24,border:"1px solid var(--border)",marginTop:32}}>
+          <div style={{fontWeight:600,fontSize:18,marginBottom:20}}>Recent Feedbacks</div>
+          {loadingReviews ? (
+            <div style={{color:"var(--mid)",fontSize:14}}>Loading feedbacks...</div>
+          ) : reviews.length > 0 ? (
+            reviews.map(r=>(
+              <div key={r._id} style={{borderBottom:"1px solid var(--border)",padding:"16px 0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:18}}>{r.student.emoji}</span>
+                    <span style={{fontWeight:600,fontSize:14}}>{r.student.name}</span>
+                  </div>
+                  <div style={{color:"var(--amber)",fontSize:13}}>{"★".repeat(r.rating)}</div>
+                </div>
+                <div style={{fontSize:14,color:"var(--charcoal)",lineHeight:1.5}}>{r.text || "No written feedback provided."}</div>
+                <div style={{fontSize:12,color:"var(--mid)",marginTop:8}}>{new Date(r.createdAt).toLocaleDateString()}</div>
+              </div>
+            ))
+          ) : (
+            <div style={{color:"var(--mid)",fontSize:14,padding:"20px 0",textAlign:"center"}}>No feedback yet.</div>
+          )}
+        </div>
+
+        <div style={{background:"#fff",borderRadius:"var(--radius)",padding:20,border:"1px solid var(--border)",marginTop:24}}>
+          <div style={{fontWeight:600,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+            <span>📺</span> Shared Content
+            {!isConnected && <span style={{fontSize:12,fontWeight:400,color:"var(--mid)",marginLeft:"auto"}}>(Connect to view private videos)</span>}
+          </div>
+          
+          {loading ? (
+            <div style={{textAlign:"center",padding:20,color:"var(--mid)"}}>Loading content...</div>
+          ) : isConnected ? (
+            userVideos.length > 0 ? (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+                {userVideos.map(v => (
+                  <div key={v._id} style={{background:"var(--cream)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
+                    <VideoPlayer url={v.videoUrl} />
+                    <div style={{padding:10}}>
+                      <div style={{fontWeight:600,fontSize:13}}>{v.title}</div>
+                      <div style={{fontSize:11,color:"var(--terracotta)",marginTop:4}}>{v.skill}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{textAlign:"center",padding:40,color:"var(--mid)",fontSize:14}}>No videos shared yet.</div>
+            )
+          ) : (
+            <div style={{textAlign:"center",padding:40,background:"var(--warm-white)",borderRadius:12,border:"1px dashed var(--border)"}}>
+              <div style={{fontSize:24,marginBottom:12}}>🔒</div>
+              <div style={{fontSize:14,color:"var(--mid)"}}>Match and accept {u.name}'s request to unlock their learning materials.</div>
+            </div>
+          )}
         </div>
       </div>
-      {showRating && <RatingModal user={u} onClose={()=>setShowRating(false)} addToast={addToast}/>}
     </DashLayout>
   );
 }
 
+function ResumeModal({ user, onClose }) {
+  const badgeText = (user?.badges || []).map(b => `• Earned '${b.name}' badge for ${b.description.toLowerCase().replace("you've ","").replace("your ","")}`).join("\n");
+  const resumeSummary = `SkillSwap Achievements for ${user?.name}:\n\n${badgeText || "No badges earned yet."}\n\nVerified on SkillSwap Platform`;
+
+  return (
+    <div className="modal-overlay" style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:"#fff",padding:40,borderRadius:24,width:550,maxWidth:"95%",boxShadow:"0 30px 60px rgba(0,0,0,0.3)"}}>
+        <div style={{fontSize:40,marginBottom:16}}>📝</div>
+        <h3 style={{fontFamily:"var(--font-display)",fontSize:24,marginBottom:8}}>Resume Integration</h3>
+        <p style={{fontSize:14,color:"var(--mid)",marginBottom:24, lineHeight:1.5}}>Copy these achievements to your LinkedIn or CV to showcase your peer-learning contributions!</p>
+        
+        <div style={{background: "var(--cream)", padding: "24px", borderRadius: "20px", border: "1px solid var(--border)", marginBottom: 24, textAlign: "left", whiteSpace: "pre-wrap", fontSize: 13, fontFamily: "monospace", color: "var(--charcoal)", lineHeight: 1.6}}>
+          {resumeSummary}
+        </div>
+
+        <div style={{display:"flex",gap:12}}>
+          <button className="btn btn-secondary" style={{flex:1}} onClick={() => { navigator.clipboard.writeText(resumeSummary); alert("Summary copied to clipboard!"); }}>📋 Copy for CV</button>
+          <button className="btn btn-primary" style={{flex:1}} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MESSAGES ─────────────────────────────────────────────────────────────────
-function Messages({ setPage, selectedUser }) {
+function Messages({ setPage, selectedUser, user }) {
   const [active, setActive] = useState(selectedUser ? selectedUser._id : null);
-  const [msgs, setMsgs] = useState({});
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [convos, setConvos] = useState(selectedUser ? [selectedUser] : []);
+  const [typing, setTyping] = useState(false);
+  const [isPeerTyping, setIsPeerTyping] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const socketRef = useRef(null);
   const endRef = useRef(null);
   
+  const fetchMessages = () => {
+    if (!active) return;
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/messages/${active}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setMessages(data))
+      .catch(err => console.error("Error fetching messages", err));
+  };
+
+  useEffect(() => {
+    socketRef.current = io("http://localhost:5000");
+    const currentUserId = user?.id || user?._id;
+
+    if (currentUserId) {
+      socketRef.current.emit("join", currentUserId);
+    }
+
+    socketRef.current.on("receive-message", (msg) => {
+      // Only add message if it's from current active chat or for current user
+      if (msg.sender === active || msg.receiver === active) {
+        setMessages(prev => [...prev, msg]);
+      }
+    });
+
+    socketRef.current.on("user-typing", (data) => {
+      if (data.userId === active) {
+        setIsPeerTyping(data.typing);
+      }
+    });
+
+    socketRef.current.on("user-status", (data) => {
+      setOnlineUsers(prev => {
+        const next = new Set(prev);
+        if (data.online) next.add(data.userId);
+        else next.delete(data.userId);
+        return next;
+      });
+    });
+
+    return () => {
+      socketRef.current.disconnect();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    fetchMessages();
+    setIsPeerTyping(false);
+  }, [active]);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({behavior:"smooth"});
-  }, [msgs, active]);
+  }, [messages, active]);
 
   useEffect(() => {
-    fetch("http://localhost:5000/users")
+    const token = localStorage.getItem("token");
+    const currentUserId = user?.id || user?._id;
+
+    fetch("http://localhost:5000/connections", {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
       .then(res => res.json())
       .then(data => {
-        // Find current user id from localStorage
-        const localUser = JSON.parse(localStorage.getItem("user") || "{}");
-        const currentUserId = localUser.id || localUser._id;
-        
-        let others = data.filter(u => u._id !== currentUserId && (!selectedUser || u._id !== selectedUser._id));
-        others = others.slice(0, 4); // Show 4 people max to make UI feel populated
-
-        setConvos(selectedUser ? [selectedUser, ...others] : others);
-        
-        if (!active && others.length > 0) {
-          setActive(others[0]._id);
+        const accepted = data.filter(c => c.status === "accepted");
+        const contacts = accepted.map(c => 
+          c.requester._id === currentUserId ? c.receiver : c.requester
+        );
+        setConvos(contacts);
+        if (!active && contacts.length > 0) {
+          setActive(contacts[0]._id);
         }
       })
       .catch(err => console.error("Error fetching chat contacts", err));
-  }, [selectedUser]); // run once on mount or when selectedUser changes
+  }, [selectedUser, user]);
   
-  const send = () => {
-    if(!input.trim() || !active) return;
-    const now = new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-    setMsgs(m=>({...m,[active]:[...(m[active]||[]),{id:Date.now(),from:"me",text:input,time:now}]}));
-    setInput("");
+  const handleTyping = (e) => {
+    setInput(e.target.value);
+    if (!socketRef.current || !active) return;
     
-    // Auto-reply bot mock
-    setTimeout(() => {
-      setMsgs(m=>({...m,[active]:[...(m[active]||[]),{id:Date.now()+1,from:"them",text:"Hey! That sounds super interesting. Let's definitely set up a time to swap skills. I'll get back to you with my availability shortly!",time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}]}));
-    }, 1500);
+    socketRef.current.emit("typing", { 
+      receiverId: active, 
+      userId: user?.id || user?._id, 
+      typing: e.target.value.length > 0 
+    });
+  };
+
+  const send = async () => {
+    if(!input.trim() || !active) return;
+    const currentUserId = user?.id || user?._id;
+
+    // Send via socket
+    socketRef.current.emit("send-message", {
+      senderId: currentUserId,
+      receiverId: active,
+      text: input
+    });
+
+    // Update UI locally
+    const placeholderMsg = {
+      _id: Date.now().toString(),
+      sender: currentUserId,
+      receiver: active,
+      text: input,
+      createdAt: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, placeholderMsg]);
+    setInput("");
+    socketRef.current.emit("typing", { receiverId: active, userId: currentUserId, typing: false });
   };
 
   return (
@@ -1017,13 +1486,13 @@ function Messages({ setPage, selectedUser }) {
           {convos.length === 0 && <div style={{padding:"20px",color:"var(--mid)",fontSize:"14px",textAlign:"center"}}>No active conversations. Reach out to a match!</div>}
           {convos.map(u=>(
             <div key={u._id} className={`chat-item ${active===u._id?"active":""}`} onClick={()=>setActive(u._id)}>
-              <div className="chat-avatar">{u.emoji || "🙂"}</div>
+              <div style={{position:"relative"}}>
+                <div className="chat-avatar">{u.emoji || "🙂"}</div>
+                {onlineUsers.has(u._id) && <div style={{position:"absolute",bottom:2,right:2,width:10,height:10,background:"#4CAF50",borderRadius:"50%",border:"2px solid #fff"}}/>}
+              </div>
               <div className="chat-info">
                 <div className="chat-info-name">{u.name}</div>
-                <div className="chat-info-preview">{(msgs[u._id]||[]).slice(-1)[0]?.text||"No messages yet"}</div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-                <span className="chat-time">{(msgs[u._id]||[]).slice(-1)[0]?.time||""}</span>
+                <div className="chat-info-preview">{onlineUsers.has(u._id) ? "Online" : "Offline"}</div>
               </div>
             </div>
           ))}
@@ -1035,24 +1504,24 @@ function Messages({ setPage, selectedUser }) {
                 <div className="chat-avatar" style={{width:40,height:40,fontSize:20}}>{convos.find(u=>u._id===active)?.emoji || "🙂"}</div>
                 <div>
                   <div style={{fontWeight:600}}>{convos.find(u=>u._id===active)?.name}</div>
-                  <div style={{fontSize:12,color:"var(--sage)"}}>● Online (Auto-Reply Bot)</div>
+                  <div style={{fontSize:12,color:"var(--sage)"}}>{isPeerTyping ? "Typing..." : (onlineUsers.has(active) ? "Online" : "Offline")}</div>
                 </div>
-                <button className="btn btn-secondary btn-sm" style={{marginLeft:"auto"}}>📅 Schedule session</button>
+                <button className="btn btn-secondary btn-sm" style={{marginLeft:"auto"}} onClick={()=>setPage("schedule")}>📅 Schedule session</button>
               </div>
               <div className="chat-messages">
-                {(msgs[active]||[]).map(m=>(
-                  <div key={m.id} className={`msg ${m.from==="me"?"mine":""}`}>
-                    {m.from!=="me"&&<div className="chat-avatar" style={{width:32,height:32,fontSize:16,flexShrink:0}}>{convos.find(u=>u._id===active)?.emoji || "🙂"}</div>}
+                {messages.map(m=>(
+                  <div key={m._id} className={`msg ${m.sender === (user?.id || user?._id) ? "mine" : ""}`}>
+                    {m.sender !== (user?.id || user?._id) && <div className="chat-avatar" style={{width:32,height:32,fontSize:16,flexShrink:0}}>{convos.find(u=>u._id===active)?.emoji || "🙂"}</div>}
                     <div>
-                      <div className={`msg-bubble ${m.from==="me"?"mine":"theirs"}`}>{m.text}</div>
-                      <div className="msg-time">{m.time}</div>
+                      <div className={`msg-bubble ${m.sender === (user?.id || user?._id) ? "mine" : "theirs"}`}>{m.text}</div>
+                      <div className="msg-time">{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                     </div>
                   </div>
                 ))}
                 <div ref={endRef}/>
               </div>
               <div className="chat-input-area">
-                <input className="chat-input" placeholder="Type a message..." value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}/>
+                <input className="chat-input" placeholder="Type a message..." value={input} onChange={handleTyping} onKeyDown={e=>e.key==="Enter"&&send()}/>
                 <button className="btn btn-primary btn-sm" onClick={send}>Send →</button>
               </div>
             </>
@@ -1068,127 +1537,509 @@ function Messages({ setPage, selectedUser }) {
   );
 }
 
-// ─── SCHEDULE ─────────────────────────────────────────────────────────────────
 function Schedule({ setPage, addToast }) {
   const [selDay, setSelDay] = useState(null);
   const [selSlot, setSelSlot] = useState(null);
-  const [selUser, setSelUser] = useState(0);
-  const month = "March 2026";
-  const days = Array.from({length:31},(_,i)=>i+1);
-  const firstDay = 0; // Sunday
-  const slots = ["9:00 AM","10:00 AM","11:00 AM","1:00 PM","2:00 PM","3:00 PM","4:00 PM","5:00 PM"];
-  const booked = [2,5];
-  const hasDot = [8,12,15,19,22];
-  const book = () => { if(!selDay||!selSlot){addToast("Pick a day and time first","info","⚠️");return;} addToast(`Session booked: Mar ${selDay} at ${selSlot}!`,"success","✅"); setSelDay(null); setSelSlot(null); };
+  const [selUserIdx, setSelUserIdx] = useState(null);
+  const [contacts, setContacts] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showRating, setShowRating] = useState(false);
+  const [sessionToRate, setSessionToRate] = useState(null);
+  const [lastBookedSession, setLastBookedSession] = useState(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  
+  // Calendar state
+  const [viewDate, setViewDate] = useState(new Date(2026, 3, 1)); // Start at April 2026
+  
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
+  
+  const currentMonth = viewDate.getMonth();
+  const currentYear = viewDate.getFullYear();
+  
+  // Calculate days in month
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const slots = ["9:00 AM", "10:00 AM", "11:00 AM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"];
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const localUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const myId = localUser.id || localUser._id;
+
+    fetch("http://localhost:5000/connections", { headers: { "Authorization": `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => {
+        const accepted = data.filter(c => c.status === "accepted");
+        const peerContacts = accepted.map(c => c.requester._id === myId ? c.receiver : c.requester);
+        setContacts(peerContacts);
+        if (peerContacts.length > 0) setSelUserIdx(0);
+      })
+      .catch(err => console.error(err));
+
+    fetchSessions();
+  }, []);
+
+  const fetchSessions = () => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/sessions`, { headers: { "Authorization": `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(data => { setSessions(data); setLoading(false); })
+      .catch(err => { console.error(err); setLoading(false); });
+  };
+
+  const changeMonth = (offset) => {
+    const newDate = new Date(currentYear, currentMonth + offset, 1);
+    setViewDate(newDate);
+    setSelDay(null);
+    setSelSlot(null);
+  };
+
+  const book = async () => {
+    if (selUserIdx === null) return addToast("Connect with someone first!", "info", "⚠️");
+    if (!selDay || !selSlot) return addToast("Pick a day and time first", "info", "⚠️");
+    
+    try {
+      const token = localStorage.getItem("token");
+      const peer = contacts[selUserIdx];
+      const res = await fetch(`${API_URL}/book-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          teacherId: peer._id,
+          date: `${monthNames[currentMonth].slice(0,3)} ${selDay}`,
+          time: selSlot,
+          skill: peer.teach?.[0]?.name || peer.teach?.[0] || "Doubt Clearing"
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      addToast(`Session booked with ${peer.name}!`, "success", "✅");
+      setLastBookedSession({ ...data.session, teacher: peer, student: JSON.parse(localStorage.getItem("user") || "{}") });
+      setShowConfirmation(true);
+      setSelDay(null);
+      setSelSlot(null);
+      fetchSessions();
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    }
+  };
+
+  const isBooked = (day, slot) => {
+    if (selUserIdx === null) return false;
+    const peer = contacts[selUserIdx];
+    const dateStr = `${monthNames[currentMonth].slice(0,3)} ${day}`;
+    return sessions.some(s => s.teacher._id === peer._id && s.date === dateStr && s.time === slot);
+  };
+
   return (
     <DashLayout page="schedule" setPage={setPage}>
       <div className="schedule-wrap">
-        <div className="page-title">Schedule a session</div>
-        <div className="page-sub">Book a learning session with your matches</div>
-        <div style={{marginBottom:24}}>
-          <div style={{fontSize:13,fontWeight:600,color:"var(--mid)",marginBottom:10}}>With</div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            {SAMPLE_USERS.slice(0,4).map((u,i)=>(
-              <div key={u.id} onClick={()=>setSelUser(i)} style={{
-                display:"flex",alignItems:"center",gap:10,padding:"10px 16px",
-                borderRadius:"var(--radius)",border:`1.5px solid ${selUser===i?"var(--terracotta)":"var(--border)"}`,
-                background:selUser===i?"#FFF0E8":"#fff",cursor:"pointer",transition:"all 0.15s"
-              }}>
-                <span style={{fontSize:20}}>{u.emoji}</span>
-                <span style={{fontSize:14,fontWeight:500}}>{u.name.split(" ")[0]}</span>
-              </div>
-            ))}
-          </div>
+        <div className="page-title">Schedule a doubt session</div>
+        <div className="page-sub">Connect with your matches to clear doubts and learn faster.</div>
+        
+        <div style={{marginBottom:32}}>
+          <div style={{fontSize:13,fontWeight:600,color:"var(--mid)",marginBottom:12,textTransform:"uppercase",letterSpacing:"0.05em"}}>1. Select Match</div>
+          {contacts.length > 0 ? (
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              {contacts.map((u,i)=>(
+                <div key={u._id} onClick={()=>setSelUserIdx(i)} style={{
+                  display:"flex",alignItems:"center",gap:10,padding:"12px 20px",
+                  borderRadius:"var(--radius)",border:`2px solid ${selUserIdx===i?"var(--terracotta)":"var(--border)"}`,
+                  background:selUserIdx===i?"#FFF0E8":"#fff",cursor:"pointer",transition:"all 0.2s"
+                }}>
+                  <span style={{fontSize:22}}>{u.emoji || "🙂"}</span>
+                  <span style={{fontSize:14,fontWeight:600}}>{u.name}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{padding:20,background:"#fff",borderRadius:12,border:"1px dashed var(--border)",color:"var(--mid)",fontSize:14}}>
+              No active matches found. Browse the community to find a peer!
+            </div>
+          )}
         </div>
+
         <div className="calendar-grid">
           <div className="cal-month">
             <div className="cal-nav">
-              <button className="btn btn-ghost btn-sm">‹</button>
-              <h4>{month}</h4>
-              <button className="btn btn-ghost btn-sm">›</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => changeMonth(-1)}>‹</button>
+              <h4 style={{fontSize:18}}>{monthNames[currentMonth]} {currentYear}</h4>
+              <button className="btn btn-ghost btn-sm" onClick={() => changeMonth(1)}>›</button>
             </div>
             <div className="cal-days">
-              {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} className="cal-day-label">{d}</div>)}
-              {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`} className="cal-day empty"/>)}
-              {days.map(d=>(
-                <div key={d} className={`cal-day available ${d===8?"today":""} ${selDay===d?"selected":""} ${hasDot.includes(d)?"has-slot":""}`} onClick={()=>setSelDay(d)}>{d}</div>
+              {dayLabels.map((d,i)=><div key={i} className="cal-day-label">{d}</div>)}
+              {Array(firstDayOfMonth).fill(null).map((_,i)=><div key={`e${i}`} className="cal-day empty"/>)}
+              {monthDays.map(d=>(
+                <div key={d} className={`cal-day available ${d===new Date().getDate() && currentMonth === new Date().getMonth() ? "today" : ""} ${selDay===d?"selected":""}`} onClick={()=>setSelDay(d)}>{d}</div>
               ))}
             </div>
           </div>
           <div className="time-slots">
-            <h4>{selDay ? `Mar ${selDay} — Available times` : "Select a day first"}</h4>
+            <div style={{fontSize:13,fontWeight:600,color:"var(--mid)",marginBottom:12,textTransform:"uppercase",letterSpacing:"0.05em"}}>2. Available slots</div>
             {selDay ? (
               <>
                 <div className="slot-grid">
-                  {slots.map((s,i)=>(
-                    <div key={s} className={`slot ${booked.includes(i)?"booked":""} ${selSlot===s?"selected":""}`} onClick={()=>!booked.includes(i)&&setSelSlot(s)}>
-                      {booked.includes(i)?"Booked":s}
+                  {slots.map((s)=>(
+                    <div key={s} className={`slot ${isBooked(selDay, s)?"booked":""} ${selSlot===s?"selected":""}`} onClick={()=>!isBooked(selDay, s)&&setSelSlot(s)}>
+                      {isBooked(selDay, s) ? "Booked" : s}
                     </div>
                   ))}
                 </div>
                 <button className="btn btn-primary" style={{marginTop:24,width:"100%",justifyContent:"center"}} onClick={book}>Confirm booking →</button>
               </>
             ) : (
-              <div style={{color:"var(--mid)",fontSize:14,textAlign:"center",padding:"40px 0"}}>👆 Pick a date to see available slots</div>
+              <div style={{color:"var(--mid)",fontSize:14,textAlign:"center",padding:"60px 0"}}>👆 Pick a date to see available slots</div>
             )}
           </div>
         </div>
-        <div style={{marginTop:32,background:"#fff",borderRadius:"var(--radius-lg)",padding:24,border:"1px solid var(--border)"}}>
-          <div style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:600,marginBottom:16}}>Upcoming sessions</div>
-          {[{name:"Priya Sharma",emoji:"🌸",skill:"Figma basics",date:"Thu, Mar 12 · 3:00 PM"},{name:"Marcus Chen",emoji:"🎯",skill:"Python loops",date:"Fri, Mar 13 · 5:00 PM"}].map(s=>(
-            <div key={s.name} style={{display:"flex",gap:16,padding:"14px 0",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
-              <div className="match-avatar" style={{fontSize:24,width:44,height:44}}>{s.emoji}</div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:600}}>{s.name}</div>
-                <div style={{fontSize:13,color:"var(--mid)"}}>{s.skill}</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:13,fontWeight:500}}>{s.date}</div>
-                <span style={{background:"#EDF5EE",color:"var(--sage)",borderRadius:100,padding:"3px 10px",fontSize:12,fontWeight:500}}>Confirmed</span>
-              </div>
+
+        <div style={{marginTop:40,background:"#fff",borderRadius:"var(--radius-lg)",padding:32,border:"1px solid var(--border)"}}>
+          <div style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:600,marginBottom:24}}>Upcoming doubt-clearing sessions</div>
+          {loading ? (
+             <div style={{textAlign:"center",padding:20,color:"var(--mid)"}}>Loading sessions...</div>
+          ) : sessions.length > 0 ? (
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {sessions.map(s=>{
+                const getStatus = () => {
+                  const [m, d] = s.date.split(" ");
+                  const [t, ampm] = s.time.split(" ");
+                  const [h, min] = t.split(":");
+                  let hour = parseInt(h);
+                  if (ampm === "PM" && hour < 12) hour += 12;
+                  if (ampm === "AM" && hour === 12) hour = 0;
+                  
+                  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                  const fullMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                  let monthIdx = months.indexOf(m);
+                  if (monthIdx === -1) monthIdx = fullMonths.indexOf(m);
+                  
+                  if (monthIdx === -1) return { label: "Scheduled", color: "var(--mid)", status: "upcoming", disabled: true };
+
+                  const sessionDate = new Date(currentYear, monthIdx, parseInt(d), hour, parseInt(min));
+                  const now = new Date();
+                  const diff = (sessionDate - now) / (1000 * 60); // minutes
+
+                  if (diff > 30) return { label: "Upcoming Meeting", color: "var(--mid)", status: "upcoming", disabled: false }; // Allow entering early
+                  if (diff <= 30 && diff >= -60) return { label: "Join Live", color: "#2E7D32", status: "live", disabled: false };
+                  return { label: "Completed", color: "var(--light-mid)", status: "done", disabled: true };
+                };
+                const stat = getStatus();
+
+                return (
+                  <div key={s._id} style={{display:"flex",gap:16,padding:"24px 0",borderBottom:"1px solid var(--border)",alignItems:"center", animation: stat.status === 'live' ? 'pulse-border 2s infinite' : 'none'}}>
+                    <div className="match-avatar" style={{fontSize:24,width:52,height:52, position: "relative"}}>
+                      {s.teacher._id === JSON.parse(localStorage.getItem("user") || "{}").id ? s.student.emoji : s.teacher.emoji}
+                      {stat.status === 'live' && <div style={{position:"absolute", top: -2, right: -2, width: 12, height: 12, background: "#f44336", borderRadius: "50%", border: "2px solid #fff", animation: "pulse 1.5s infinite"}} />}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{display: "flex", alignItems: "center", gap: 8}}>
+                        <div style={{fontWeight:600,fontSize:16}}>
+                          {s.teacher._id === (JSON.parse(localStorage.getItem("user") || "{}").id || JSON.parse(localStorage.getItem("user") || "{}")._id) 
+                            ? `Teaching ${s.student?.name || 'Student'}` 
+                            : `Learning from ${s.teacher?.name || 'Teacher'}`}
+                          <span style={{fontSize: 12, fontWeight: 400, color: "var(--mid)", marginLeft: 8}}>
+                            (Student: {s.student?.name || 'Me'})
+                          </span>
+                        </div>
+                        <span style={{fontSize: 10, background: "var(--sand)", padding: "2px 8px", borderRadius: 100, fontWeight: 700, color: "var(--mid)", letterSpacing: "0.03em", textTransform: "uppercase"}}>Virtual Meeting</span>
+                      </div>
+                      <div style={{fontSize:13,color:"var(--terracotta)",fontWeight:500,marginTop:2}}>{s.skill}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:14,fontWeight:600,color:"var(--charcoal)"}}>{s.date} · {s.time}</div>
+                      <div style={{marginTop:8,display:"flex",gap:12,justifyContent:"flex-end",alignItems:"center"}}>
+                        <button 
+                          className="btn btn-sm" 
+                          style={{
+                            background: stat.status === 'live' ? "#E8F5E9" : stat.status === 'upcoming' ? "var(--sand)" : "var(--warm-white)",
+                            color: stat.color, border: "none", fontSize: 11, padding: "6px 14px", 
+                            fontWeight: 700, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6,
+                            boxShadow: stat.status === 'live' ? "0 4px 12px rgba(46, 125, 50, 0.2)" : "none"
+                          }}
+                          disabled={stat.disabled}
+                          onClick={() => goTo("session-room", s.meetingId)}
+                        >
+                          {stat.status === 'live' ? <span>🔴 {stat.label}</span> : <span>📅 {stat.label}</span>}
+                        </button>
+                        <button 
+                          className="btn btn-ghost btn-sm" 
+                          style={{color:"var(--mid)",fontSize:11,padding: "6px 0", display: "flex", alignItems: "center", gap: 4}}
+                          onClick={() => {
+                            navigator.clipboard.writeText(s.meetingLink);
+                            addToast("Meeting link copied!", "success", "📋");
+                          }}
+                        >
+                          <span>🔗</span> Copy Link
+                        </button>
+                        {s.teacher._id !== (JSON.parse(localStorage.getItem("user") || "{}").id || JSON.parse(localStorage.getItem("user") || "{}")._id) && (stat.status === 'done' || stat.status === 'live') && (
+                          <button className="btn btn-primary btn-sm" style={{fontSize: 11, padding: "6px 14px"}} onClick={()=>{setSessionToRate(s);setShowRating(true);}}>⭐ Rate Session</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          ) : (
+            <div style={{textAlign:"center",padding:40,color:"var(--mid)",fontSize:15}}>No sessions booked yet. Start connecting!</div>
+          )}
         </div>
       </div>
+      {showRating && <RatingModal session={sessionToRate} onClose={()=>{setShowRating(false);fetchSessions();}} addToast={addToast}/>}
+      {showConfirmation && (
+        <BookingConfirmationModal 
+          session={lastBookedSession} 
+          onClose={() => setShowConfirmation(false)} 
+          addToast={addToast} 
+        />
+      )}
     </DashLayout>
   );
 }
 
+function BookingConfirmationModal({ session, onClose, addToast }) {
+  const link = session?.meetingLink;
+  const studentName = session?.student?.name || "you";
+  const teacherName = session?.teacher?.name || "your mentor";
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(link);
+    addToast("Link copied to clipboard!", "success", "📋");
+  };
+
+  return (
+    <div className="modal-overlay" style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:"#fff",padding:32,borderRadius:24,width:450,maxWidth:"95%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)", textAlign: "center"}}>
+        <div style={{fontSize:48, marginBottom: 16}}>🎉</div>
+        <h3 style={{fontFamily:"var(--font-display)",fontSize:24,marginBottom:8}}>Session Booked!</h3>
+        <p style={{fontSize:15,color:"var(--charcoal)",fontWeight:600,marginBottom:4}}>Booked for: {studentName}</p>
+        <p style={{fontSize:14,color:"var(--mid)",marginBottom:24}}>With: {teacherName}</p>
+        <p style={{fontSize:14,color:"var(--mid)",marginBottom:24}}>Your doubt clearing session on <strong>{session?.date}</strong> at <strong>{session?.time}</strong> has been scheduled.</p>
+        
+        <div style={{background: "var(--cream)", padding: "16px", borderRadius: "12px", border: "1px dashed var(--border)", marginBottom: 24, wordBreak: "break-all"}}>
+           <div style={{fontSize: 12, color: "var(--light-mid)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase"}}>Virtual Meeting Room</div>
+           <div style={{fontSize: 14, fontWeight: 500, color: "var(--terracotta)"}}>{link}</div>
+        </div>
+
+        <div style={{display:"flex",gap:12}}>
+          <button className="btn btn-secondary" style={{flex:1}} onClick={copyToClipboard}>📋 Copy Link</button>
+          <button className="btn btn-primary" style={{flex:1}} onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RatingModal({ session, onClose, addToast }) {
+  const [rating, setRating] = useState(5);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/rate-teacher`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          teacherId: session.teacher._id,
+          sessionId: session._id,
+          rating,
+          text
+        })
+      });
+      if (!res.ok) throw new Error("Failed to submit rating");
+      addToast("Thank you for your feedback!", "success", "⭐");
+      onClose();
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:"#fff",padding:32,borderRadius:20,width:400,maxWidth:"90%",boxShadow:"0 20px 40px rgba(0,0,0,0.2)"}}>
+        <h3 style={{fontFamily:"var(--font-display)",fontSize:22,marginBottom:12}}>Rate your session</h3>
+        <p style={{fontSize:14,color:"var(--mid)",marginBottom:24}}>How was your learning experience with {session.teacher.name}?</p>
+        
+        <div style={{display:"flex",gap:8,justifyContent:"center",fontSize:32,marginBottom:24,cursor:"pointer"}}>
+          {[1,2,3,4,5].map(v => (
+            <span key={v} onClick={()=>setRating(v)} style={{color:v <= rating ? "var(--amber)" : "var(--border)"}}>★</span>
+          ))}
+        </div>
+
+        <div className="field" style={{marginBottom:24}}>
+          <label>Any feedback? (Optional)</label>
+          <textarea placeholder="Tell others how it went..." value={text} onChange={e=>setText(e.target.value)} style={{width:"100%",padding:12,borderRadius:12,border:"1px solid var(--border)",height:100,resize:"none"}}/>
+        </div>
+
+        <div style={{display:"flex",gap:12}}>
+          <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" style={{flex:1}} onClick={submit} disabled={loading}>{loading ? "Saving..." : "Submit Rating"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── RESOURCES ────────────────────────────────────────────────────────────────
+function ResourceForm({ onAdded, addToast }) {
+  const [form, setForm] = useState({ title: "", skill: "", type: "pdf", url: "", pages: "", words: "" });
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("file");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.title || !form.skill) return addToast("Title and skill required", "info", "⚠️");
+    setLoading(true);
+    try {
+      let finalUrl = form.url;
+      if (mode === "file" && file) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/upload`, {
+          method: "POST", headers: { "Authorization": `Bearer ${token}` },
+          body: formData
+        });
+        if (!res.ok) throw new Error("Upload failed");
+        const data = await res.json();
+        finalUrl = data.url;
+      }
+      if (!finalUrl) throw new Error("Please provide a file or URL");
+
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/add-resource`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ ...form, url: finalUrl })
+      });
+      if (!res.ok) throw new Error("Failed to save resource");
+      addToast("Resource shared!", "success", "✅");
+      setForm({ title: "", skill: "", type: "pdf", url: "", pages: "", words: "" });
+      setFile(null);
+      onAdded();
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{background:"#fff",borderRadius:"var(--radius-lg)",padding:32,border:"1px solid var(--border)",marginBottom:32}}>
+      <h3 style={{fontFamily:"var(--font-display)",fontSize:22,marginBottom:20}}>Share a resource</h3>
+      <div style={{display:"flex",gap:12,marginBottom:20}}>
+        {["file","url"].map(m=>(
+          <button key={m} className={`btn btn-sm ${mode===m?"btn-primary":"btn-secondary"}`} onClick={()=>setMode(m)}>{m==="file"?"📁 Upload File":"🔗 Link URL"}</button>
+        ))}
+      </div>
+      <form onSubmit={submit} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div className="field" style={{gridColumn:"1/-1"}}><label>Title</label><input placeholder="e.g. React Patterns Guide" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></div>
+        <div className="field"><label>Type</label>
+          <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
+            <option value="pdf">PDF Document</option>
+            <option value="video">Video Lesson</option>
+            <option value="notes">Study Notes</option>
+          </select>
+        </div>
+        <div className="field"><label>Skill</label><input placeholder="e.g. React, Python" value={form.skill} onChange={e=>setForm({...form,skill:e.target.value})}/></div>
+        <div className="field">
+          {mode==="file" ? (
+            <><label>File</label><input type="file" onChange={e=>setFile(e.target.files[0])}/></>
+          ) : (
+            <><label>URL</label><input placeholder="https://..." value={form.url} onChange={e=>setForm({...form,url:e.target.value})}/></>
+          )}
+        </div>
+        <div className="field">
+          {form.type==="pdf" ? (
+            <><label>Pages (optional)</label><input placeholder="e.g. 12 pages" value={form.pages} onChange={e=>setForm({...form,pages:e.target.value})}/></>
+          ) : (
+            <><label>Words/Duration (optional)</label><input placeholder="e.g. 500 words" value={form.words} onChange={e=>setForm({...form,words:e.target.value})}/></>
+          )}
+        </div>
+        <button className="btn btn-primary" style={{gridColumn:"1/-1",justifyContent:"center"}} disabled={loading}>{loading?"Uploading...":"Share Resource →"}</button>
+      </form>
+    </div>
+  );
+}
+
 function Resources({ setPage, addToast }) {
   const [filter, setFilter] = useState("All");
+  const [resources, setResources] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
   const types = ["All","Video","PDF","Notes"];
   const typeEmoji = {video:"🎥",pdf:"📄",notes:"📝"};
-  const filtered = filter==="All" ? RESOURCES : RESOURCES.filter(r=>r.type===filter.toLowerCase());
+
+  const fetchResources = () => {
+    const token = localStorage.getItem("token");
+    fetch(`${API_URL}/resources`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => { setResources(data); setLoading(false); })
+      .catch(err => { console.error(err); setLoading(false); });
+  };
+
+  useEffect(() => { fetchResources(); }, []);
+
+  const filtered = filter==="All" ? resources : resources.filter(r=>r.type===filter.toLowerCase());
+
   return (
     <DashLayout page="resources" setPage={setPage}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
         <div>
           <div className="page-title">Resources</div>
           <div className="page-sub">Tutorials, guides, and notes shared by the community</div>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={()=>addToast("Upload feature coming soon!","info","📤")}>+ Upload resource</button>
+        <button className="btn btn-primary btn-sm" onClick={()=>setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Upload resource"}</button>
       </div>
+
+      {showForm && <ResourceForm onAdded={()=>{fetchResources(); setShowForm(false);}} addToast={addToast}/>}
+
       <div className="filter-row" style={{marginBottom:28}}>
         {types.map(t=><button key={t} className={`filter-chip ${filter===t?"active":""}`} onClick={()=>setFilter(t)}>{t}</button>)}
       </div>
-      <div className="resource-grid">
-        {filtered.map(r=>(
-          <div key={r.id} className="resource-card" onClick={()=>addToast(`Opening "${r.title}"...`,"info","📖")}>
-            <div className="resource-thumb">{r.emoji}</div>
-            <div className={`resource-type type-${r.type}`}>{typeEmoji[r.type]} {r.type.toUpperCase()}</div>
-            <div className="resource-title">{r.title}</div>
-            <div className="resource-by">by {r.by} · {r.skill}</div>
-            <div style={{fontSize:12,color:"var(--light-mid)",marginTop:6}}>{r.duration||r.pages||r.words}</div>
-          </div>
-        ))}
-      </div>
+
+      {loading ? (
+        <div style={{textAlign:"center",padding:40,color:"var(--mid)"}}>Loading resources...</div>
+      ) : filtered.length > 0 ? (
+        <div className="resource-grid">
+          {filtered.map(r=>(
+            <div key={r.id} className="resource-card" onClick={()=>window.open(r.url, "_blank")}>
+              <div className="resource-thumb">{r.emoji}</div>
+              <div className={`resource-type type-${r.type}`}>{typeEmoji[r.type]} {r.type.toUpperCase()}</div>
+              <div className="resource-title">{r.title}</div>
+              <div className="resource-by">by {r.by} · {r.skill}</div>
+              <div style={{fontSize:12,color:"var(--light-mid)",marginTop:6}}>{r.pages || r.words || r.duration || "View resource"}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{textAlign:"center",padding:60,background:"var(--warm-white)",borderRadius:"var(--radius-lg)",border:"1px dashed var(--border)"}}>
+          <div style={{fontSize:40,marginBottom:16}}>📚</div>
+          <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:600}}>No resources found</div>
+          <p style={{color:"var(--mid)",marginTop:8}}>Be the first to share a guide or tutorial with the community!</p>
+        </div>
+      )}
     </DashLayout>
   );
 }
 
 // ─── MY PROFILE ───────────────────────────────────────────────────────────────
 function MyProfile({ user, setPage }) {
+  const [showResume, setShowResume] = useState(false);
   return (
     <DashLayout page="profile" setPage={setPage}>
       <div style={{maxWidth:700}}>
@@ -1203,9 +2054,77 @@ function MyProfile({ user, setPage }) {
             {(user?.learn||[]).map((s,i)=><span key={i} className="skill-pill pill-learn" style={{fontSize:13}}>📖 {s}</span>)}
             {(!user?.teach?.length && !user?.learn?.length) && <span style={{fontSize:13,color:"var(--light-mid)"}}>No skills yet — edit your profile to add some!</span>}
           </div>
-          <div className="rating-display" style={{marginTop:12}}><span style={{color:"var(--amber)"}}>★★★★★</span><span style={{fontWeight:600,marginLeft:4}}>4.9</span><span style={{color:"var(--mid)",fontSize:13}}>(7 sessions)</span></div>
-          <button className="btn btn-secondary btn-sm" style={{marginTop:16}} onClick={()=>setPage("setup")}>✏️ Edit profile</button>
+          <div className="rating-display" style={{marginTop:12}}>
+            {((user?.sessions||0) + (user?.attendCount||0)) > 0 ? (
+              <>
+                <span style={{color:"var(--amber)"}}>{"★".repeat(Math.floor(user?.rating || 5))}</span>
+                <span style={{fontWeight:600,marginLeft:4}}>{(user?.rating || 5).toFixed(1)}</span>
+                <span style={{color:"var(--mid)",fontSize:13,marginLeft:4}}>({(user?.sessions||0) + (user?.attendCount||0)} total sessions)</span>
+              </>
+            ) : (
+              <span style={{color:"var(--mid)",fontSize:13,fontStyle:"italic"}}>No sessions completed yet</span>
+            )}
+          </div>
+          <div style={{display:"flex",gap:12,marginTop:16}}>
+            <button className="btn btn-secondary btn-sm" onClick={()=>setPage("setup")}>✏️ Edit profile</button>
+            <button className="btn btn-sage btn-sm" onClick={() => setShowResume(true)}>📝 Export to Resume</button>
+          </div>
         </div>
+
+        {/* Badges Section */}
+        <div style={{background:"#fff",borderRadius:"var(--radius)",padding:24,border:"1px solid var(--border)",marginTop:24}}>
+          <div style={{fontWeight:600,fontSize:18,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+            <span>🏆</span> Your Badges ({user?.badges?.length || 0})
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))",gap:16}}>
+            {(user?.badges || []).map((b,i)=>(
+              <div key={i} className="badge-card" style={{
+                padding:16, borderRadius:16, background:"var(--warm-white)", border:"1px solid var(--border-light)", textAlign:"center",
+                display:"flex", flexDirection:"column", alignItems:"center", gap:8, position: "relative"
+              }} title={b.description}>
+                <div style={{fontSize:32}}>{b.icon}</div>
+                <div style={{fontWeight:700, fontSize:14}}>{b.name}</div>
+                <div style={{fontSize:11, color:"var(--mid)"}}>{b.category}</div>
+                <div className="badge-tooltip" style={{
+                  position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
+                  background: "#333", color: "#fff", padding: "8px 12px", borderRadius: 8, fontSize: 11,
+                  width: 180, pointerEvents: "none", opacity: 0, transition: "opacity 0.2s", marginBottom: 10, zIndex: 10
+                }}>{b.description}</div>
+              </div>
+            ))}
+            {(!user?.badges || user.badges.length === 0) && (
+              <div style={{gridColumn:"1/-1", padding: 20, textAlign: "center", color: "var(--mid)", fontSize: 14, border: "1px dashed var(--border)", borderRadius: 12}}>
+                Complete your first session to earn a badge! 🌱
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Progress to Next Achievement */}
+        <div style={{background:"#fff",borderRadius:"var(--radius)",padding:24,border:"1px solid var(--border)",marginTop:24}}>
+          <div style={{fontWeight:600,fontSize:16,marginBottom:12,display:"flex",justifyContent:"space-between"}}>
+            <span>Next Achievement Progress</span>
+            <span style={{fontSize:12, color:"var(--sage)", fontWeight:700}}>
+              {((user?.sessions||0) + (user?.attendCount||0)) < 5 ? "Active Learner" : "Expert"}
+            </span>
+          </div>
+          {(() => {
+            const total = (user?.sessions||0) + (user?.attendCount||0);
+            let target = total < 5 ? 5 : 10;
+            let percent = Math.min((total / target) * 100, 100);
+            return (
+              <>
+                <div style={{width:"100%",height:10,background:"var(--border-light)",borderRadius:10,overflow:"hidden"}}>
+                  <div style={{width:`${percent}%`,height:"100%",background:"var(--sage)",transition:"width 0.6s ease"}}/>
+                </div>
+                <div style={{fontSize:11, color:"var(--mid)", marginTop:8, textAlign:"right"}}>
+                  {total} / {target} sessions completed
+                </div>
+              </>
+            )
+          })()}
+        </div>
+
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginTop:24}}>
           <div style={{background:"#fff",borderRadius:"var(--radius)",padding:20,border:"1px solid var(--border)"}}>
             <div style={{fontWeight:600,marginBottom:12}}>I can teach</div>
@@ -1217,33 +2136,452 @@ function MyProfile({ user, setPage }) {
           </div>
         </div>
       </div>
+        {showResume && <ResumeModal user={user} onClose={() => setShowResume(false)} />}
+      </DashLayout>
+    );
+  }
+
+// ─── RATING MODAL (Old Placeholder Removed) ──────────────────────────────────
+
+// ─── VIDEO LEARNING ───────────────────────────────────────────────────────────
+const getYoutubeEmbed = (url) => {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
+};
+
+function VideoPlayer({ url }) {
+  const embed = getYoutubeEmbed(url);
+  if (embed) {
+    return (
+      <iframe 
+        style={{width:"100%",aspectRatio:"16/9",border:"none",background:"#000"}} 
+        src={`${embed}?rel=0&autoplay=0&mute=0`} 
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+        allowFullScreen
+        title="Video Player"
+      ></iframe>
+    );
+  }
+  return <video key={url} controls crossOrigin="anonymous" playsInline style={{width:"100%",aspectRatio:"16/9",background:"#000"}} src={url} />;
+}
+
+function VideoForm({ onVideoAdded, addToast }) {
+  const [form, setForm] = useState({ title: "", skill: "", videoUrl: "" });
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [uploadMode, setUploadMode] = useState("file"); // "file" or "url"
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.title || !form.skill) return addToast("Please fill title and skill", "info", "⚠️");
+    
+    setLoading(true);
+    try {
+      let videoUrl = form.videoUrl;
+
+      // If in file mode, upload the file first
+      if (uploadMode === "file" && file) {
+        const formData = new FormData();
+        formData.append("file", file);
+        
+        const token = localStorage.getItem("token");
+        const uploadRes = await fetch(`${API_URL}/upload`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` },
+          body: formData
+        });
+        
+        if (!uploadRes.ok) throw new Error("File upload failed");
+        const uploadData = await uploadRes.json();
+        videoUrl = uploadData.url;
+      }
+
+      if (!videoUrl) return addToast("Please provide a video file or URL", "info", "⚠️");
+
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/add-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ ...form, videoUrl })
+      });
+      if (!res.ok) throw new Error("Failed to add video");
+      addToast("Video shared successfully!", "success", "🎥");
+      setForm({ title: "", skill: "", videoUrl: "" });
+      setFile(null);
+      onVideoAdded();
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="video-form-card">
+      <h3 style={{ fontFamily: "var(--font-display)", fontSize: "22px", marginBottom: "20px" }}>Share a learning video</h3>
+      
+      <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
+        <button 
+          className={`btn btn-sm ${uploadMode === "file" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setUploadMode("file")}
+        >
+          📁 Upload File
+        </button>
+        <button 
+          className={`btn btn-sm ${uploadMode === "url" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setUploadMode("url")}
+        >
+          🔗 Link URL
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label>Video Title</label>
+          <input placeholder="e.g. Master React Hooks in 10 minutes" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Skill / Category</label>
+          <input placeholder="e.g. React, Python, UI Design" value={form.skill} onChange={e => setForm({ ...form, skill: e.target.value })} />
+        </div>
+        
+        <div className="field">
+          {uploadMode === "file" ? (
+            <>
+              <label>Choose Video File</label>
+              <input type="file" accept="video/mp4,video/x-m4v,video/*" onChange={e => setFile(e.target.files[0])} />
+            </>
+          ) : (
+            <>
+              <label>Video URL (direct link)</label>
+              <input placeholder="https://example.com/video.mp4" value={form.videoUrl} onChange={e => setForm({ ...form, videoUrl: e.target.value })} />
+            </>
+          )}
+        </div>
+        
+        <button className="btn btn-primary" type="submit" disabled={loading} style={{ gridColumn: "1 / -1", justifyContent: "center" }}>
+          {loading ? "Processing..." : "Share Video →"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function VideoList({ videos, loading, filter, setFilter, onVideoDeleted, addToast, progress, onVideoWatched }) {
+  const currentUserId = JSON.parse(localStorage.getItem("user") || "{}").id;
+  const skills = ["All", ...new Set(videos.map(v => v.skill))];
+
+  return (
+    <div className="video-list-wrap">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <h3 style={{ fontFamily: "var(--font-display)", fontSize: "24px" }}>Community Videos</h3>
+        <div className="filter-row">
+          {skills.map(s => (
+            <button key={s} className={`filter-chip ${filter === s ? "active" : ""}`} onClick={() => setFilter(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--mid)" }}>Loading videos...</div>
+      ) : videos.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px", background: "#fff", borderRadius: "var(--radius-lg)", border: "1px dashed var(--border)" }}>
+          <div style={{ fontSize: "40px", marginBottom: "16px" }}>📺</div>
+          <p style={{ color: "var(--mid)" }}>No videos shared yet for this skill.</p>
+        </div>
+      ) : (
+        <div className="video-grid">
+          {videos.filter(v => filter === "All" || v.skill === filter).map(v => {
+            const isCompleted = progress?.completedVideoIds?.includes(v._id);
+            return (
+              <div key={v._id} className="video-card">
+                <div className="video-player-container">
+                  <VideoPlayer url={v.videoUrl} />
+                </div>
+                <div className="video-content">
+                  <div className="video-skill">{v.skill}</div>
+                  <div className="video-title">{v.title}</div>
+                  <div style={{ marginTop: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginRight: "auto" }}>
+                       <div style={{ fontSize: 13, fontWeight: 600 }}>By {v.uploadedBy?.name || "Global"}</div>
+                    </div>
+                    {!isCompleted ? (
+                      <button className="btn btn-primary btn-sm" onClick={() => onVideoWatched(v._id, v.skill)}>✓ Watch</button>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "var(--sage)", fontWeight: 700 }}>✅ WATCHED</span>
+                    )}
+                    {(v.uploadedBy?._id === currentUserId || v.uploadedBy === currentUserId) && (
+                      <button className="btn btn-sm" style={{ background: "#FFEFEF", color: "#D32F2F" }} onClick={() => deleteVideo(v._id)}>🗑️</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SkillFeedbackModal({ skill, toUserId, onClose, addToast }) {
+  const [rating, setRating] = useState(5);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/skill-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ skill, toUserId, rating, text })
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Failed to submit");
+      }
+      addToast("Thanks for the detailed feedback!", "success", "📬");
+      onClose();
+    } catch (err) {
+      addToast(err.message, "error", "❌");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:"#fff",padding:40,borderRadius:24,width:450,maxWidth:"95%",boxShadow:"0 30px 60px rgba(0,0,0,0.2)"}}>
+        <div style={{fontSize:40,marginBottom:16}}>🏆</div>
+        <h3 style={{fontFamily:"var(--font-display)",fontSize:24,marginBottom:8}}>Skill Mastered!</h3>
+        <p style={{fontSize:14,color:"var(--mid)",marginBottom:24}}>You've watched all videos for <b>{skill}</b>. How was the teacher's content?</p>
+        
+        <div style={{display:"flex",gap:10,justifyContent:"center",fontSize:36,marginBottom:32,cursor:"pointer"}}>
+          {[1,2,3,4,5].map(v => (
+            <span key={v} onClick={()=>setRating(v)} style={{color:v <= rating ? "#FFC107" : "#E0E0E0", transition: "transform 0.2s"}}>★</span>
+          ))}
+        </div>
+
+        <div className="field" style={{marginBottom:24}}>
+          <label>Detailed Feedback</label>
+          <textarea placeholder="Was this course helpful? What could be improved?" value={text} onChange={e=>setText(e.target.value)} style={{width:"100%",padding:14,borderRadius:16,border:"1px solid var(--border)",height:120,resize:"none"}}/>
+        </div>
+
+        <div style={{display:"flex",gap:12}}>
+          <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Later</button>
+          <button className="btn btn-primary" style={{flex:1}} onClick={submit} disabled={loading}>{loading ? "Sending..." : "Submit Review →"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VideoLearning({ setPage, addToast }) {
+  const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("All");
+  const [progress, setProgress] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+
+  const fetchVideos = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/videos`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setVideos(data);
+      // Immediately scan for completion once videos are known
+      const uniqueSkills = [...new Set(data.map(v => v.skill))];
+      let finishedSkill = null;
+      for (const s of uniqueSkills) {
+        const r2 = await fetch(`${API_URL}/skill-progress/${s}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const d2 = await r2.json();
+        if (d2.isCourseCompleted) { finishedSkill = s; break; }
+      }
+      setProgress(prev => ({ ...(prev||{}), autoFeedbackSkill: finishedSkill }));
+    } catch (err) {
+      addToast("Failed to load videos", "error", "❌");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProgress = async (skill) => {
+    const token = localStorage.getItem("token");
+    try {
+      // Find which skills are finished
+      const uniqueSkills = [...new Set(videos.map(v => v.skill))];
+      let finishedSkill = null;
+      for (const s of uniqueSkills) {
+        const res = await fetch(`${API_URL}/skill-progress/${s}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const d = await res.json();
+        if (d.isCourseCompleted) { finishedSkill = s; break; }
+      }
+      
+      // Also fetch progress for current filter if not "All"
+      if (skill !== "All") {
+        const res = await fetch(`${API_URL}/skill-progress/${skill}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const d = await res.json();
+        setProgress({ ...d, autoFeedbackSkill: finishedSkill });
+      } else {
+        setProgress({ totalVideos: 0, percent: 0, autoFeedbackSkill: finishedSkill });
+      }
+    } catch (err) {}
+  };
+
+  const onVideoWatched = async (videoId, skill) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_URL}/video-complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ videoId, skill })
+      });
+      if (res.ok) {
+        addToast("Progress saved!", "success", "📖");
+        fetchProgress(filter);
+      }
+    } catch (err) {}
+  };
+
+  useEffect(() => { fetchVideos(); }, []);
+  useEffect(() => { fetchProgress(filter); }, [filter]);
+
+  return (
+    <DashLayout page="videos" setPage={setPage}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:32}}>
+        <div>
+          <div className="page-title">Learning Hub</div>
+          <div className="page-sub">Watch skill-based content shared by your peers</div>
+        </div>
+        {progress && progress.totalVideos > 0 && (
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:13,fontWeight:600,color:"var(--mid)",marginBottom:6}}>{progress.percent}% Completed</div>
+            <div style={{width:200,height:8,background:"var(--border)",borderRadius:10,overflow:"hidden"}}>
+              <div style={{width:`${progress.percent}%`,height:"100%",background:"var(--sage)",transition:"width 0.5s cubic-bezier(0.4, 0, 0.2, 1)"}}/>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {progress?.autoFeedbackSkill && (
+        <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:16,padding:20,marginBottom:32,display:"flex",alignItems:"center",gap:20,animation:"slideDown 0.4s ease"}}>
+          <div style={{fontSize:32}}>🎓</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,color:"#166534"}}>Course Completed!</div>
+            <div style={{fontSize:14,color:"#15803d"}}>You've mastered the <b>{progress.autoFeedbackSkill}</b> skill. Help the community by leaving feedback.</div>
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowFeedback(true)}>Leave Feedback ⭐</button>
+        </div>
+      )}
+
+      <VideoForm onVideoAdded={fetchVideos} addToast={addToast} />
+      <VideoList 
+        videos={videos} loading={loading} filter={filter} setFilter={setFilter} 
+        onVideoDeleted={fetchVideos} addToast={addToast} 
+        progress={progress} onVideoWatched={onVideoWatched}
+      />
+      
+      {showFeedback && (
+        <SkillFeedbackModal 
+          skill={progress.autoFeedbackSkill} 
+          toUserId={videos.find(v=>v.skill===progress.autoFeedbackSkill)?.uploadedBy?._id || videos.find(v=>v.skill===progress.autoFeedbackSkill)?.uploadedBy} 
+          onClose={() => {setShowFeedback(false); fetchProgress(filter);}} 
+          addToast={addToast}
+        />
+      )}
     </DashLayout>
   );
 }
 
-// ─── RATING MODAL ─────────────────────────────────────────────────────────────
-function RatingModal({ user, onClose, addToast }) {
-  const [stars, setStars] = useState(0);
-  const [hover, setHover] = useState(0);
-  const [comment, setComment] = useState("");
-  const submit = () => { if(!stars){addToast("Please select a rating","info","⚠️");return;} addToast(`Thanks for rating ${user.name}!`,"success","⭐"); onClose(); };
+function SessionRoom({ setPage, meetingId, user }) {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!meetingId) return;
+    fetch(`${API_URL}/session-details/${meetingId}`)
+      .then(res => res.json())
+      .then(data => {
+        setSession(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, [meetingId]);
+
+  if (loading) return <DashLayout page="schedule" setPage={setPage}><div style={{padding: 40}}>Loading session details...</div></DashLayout>;
+  if (!session) return <DashLayout page="schedule" setPage={setPage}><div style={{padding: 40}}>Session not found or link is invalid.</div></DashLayout>;
+
+  const isTeacher = session.teacher?._id === (user?.id || user?._id);
+  const partner = isTeacher ? session.student : session.teacher;
+
   return (
-    <div className="rating-modal-overlay" onClick={onClose}>
-      <div className="rating-modal" onClick={e=>e.stopPropagation()}>
-        <h3>Rate your session</h3>
-        <p style={{color:"var(--mid)"}}>with {user.name}</p>
-        <div className="stars">
-          {[1,2,3,4,5].map(i=>(
-            <span key={i} className={`star ${i<=(hover||stars)?"lit":""}`} onMouseEnter={()=>setHover(i)} onMouseLeave={()=>setHover(0)} onClick={()=>setStars(i)}>★</span>
-          ))}
+    <DashLayout page="schedule" setPage={setPage}>
+      <div style={{maxHeight: "calc(100vh - 100px)", display: "flex", flexDirection: "column", gap: 24}}>
+        <div style={{display: "flex", justifyContent: "space-between", alignItems: "center"}}>
+           <button className="btn btn-ghost" style={{alignSelf: "flex-start"}} onClick={() => setPage("schedule")}>← Back to Schedule</button>
+           <div style={{background: "#FFF0E8", color: "var(--terracotta)", padding: "4px 12px", borderRadius: 100, fontSize: 13, fontWeight: 700}}>
+             ID: {meetingId.slice(0, 8)}
+           </div>
         </div>
-        <div className="field"><label>Comment (optional)</label><textarea placeholder="How was the session? Any feedback for them?" value={comment} onChange={e=>setComment(e.target.value)}/></div>
-        <div style={{display:"flex",gap:12}}>
-          <button className="btn btn-primary" onClick={submit}>Submit rating</button>
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+        <div style={{background: "#000", borderRadius: 24, flex: 1, position: "relative", minHeight: 400, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff"}}>
+          <div style={{textAlign: "center"}}>
+            <div style={{fontSize: 60, marginBottom: 20}}>🌍</div>
+            <div style={{fontFamily: "var(--font-display)", fontSize: 32}}>Dummy Session Room</div>
+            <p style={{color: "rgba(255,255,255,0.6)", marginTop: 8}}>Meeting with {partner?.name} · {session.date} at {session.time}</p>
+            <div style={{marginTop: 24, background: "rgba(255,255,255,0.1)", padding: "12px 24px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.2)", maxWidth: 400, margin: "24px auto"}}>
+               <div style={{fontSize: 13, opacity: 0.8}}>This is a dummy session room (no real video call integration yet). In a future update, this will integrate with Zoom or Google Meet.</div>
+            </div>
+          </div>
+          <div style={{position: "absolute", bottom: 20, left: 20, background: "#D32F2F", padding: "8px 16px", borderRadius: 100, fontSize: 13}}>🔴 WAITING FOR VIDEO API</div>
+        </div>
+        <div style={{display: "grid", gridTemplateColumns: "1fr 300px", gap: 24}}>
+          <div style={{background: "#fff", padding: 24, borderRadius: 20, border: "1px solid var(--border)"}}>
+            <h4 style={{marginBottom: 12}}>Session Info</h4>
+            <div style={{display: "flex", gap: 20}}>
+               <div style={{flex: 1}}>
+                  <div style={{fontSize: 12, color: "var(--light-mid)", fontWeight: 600, textTransform: "uppercase"}}>Subject</div>
+                  <div style={{fontSize: 16, fontWeight: 600}}>{session.skill}</div>
+               </div>
+               <div style={{flex: 1}}>
+                  <div style={{fontSize: 12, color: "var(--light-mid)", fontWeight: 600, textTransform: "uppercase"}}>Scheduled Time</div>
+                  <div style={{fontSize: 16, fontWeight: 600}}>{session.date}, {session.time}</div>
+               </div>
+            </div>
+            {isTeacher && <div style={{marginTop: 16, color: "var(--sage)", fontSize: 14}}>You are the <b>Mentor</b> for this session.</div>}
+          </div>
+          <div style={{background: "#fff", padding: 24, borderRadius: 20, border: "1px solid var(--border)"}}>
+             <h4 style={{marginBottom: 12}}>Participants</h4>
+             <div style={{display: "flex", gap: 10, alignItems: "center", marginBottom: 12}}>
+               <div style={{width: 32, height: 32, borderRadius: 100, background: "var(--warm-white)", display: "flex", alignItems: "center", justifyContent: "center"}}>{user?.emoji}</div>
+               <div style={{fontSize: 14, fontWeight: 600}}>{user?.name} (You)</div>
+             </div>
+             <div style={{display: "flex", gap: 10, alignItems: "center", marginBottom: 12}}>
+               <div style={{width: 32, height: 32, borderRadius: 100, background: "var(--warm-white)", display: "flex", alignItems: "center", justifyContent: "center"}}>{partner?.emoji}</div>
+               <div style={{fontSize: 14, fontWeight: 600}}>{partner?.name}</div>
+             </div>
+             <button className="btn btn-secondary btn-sm" style={{width: "100%", marginTop: 20}} onClick={() => setPage("schedule")}>Leave Room</button>
+          </div>
         </div>
       </div>
-    </div>
+    </DashLayout>
   );
 }
 
@@ -1254,17 +2592,30 @@ export default function App() {
   const [hasSignedUp, setHasSignedUp] = useState(false);
   const [user, setUser] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [meetingId, setMeetingId] = useState(null);
   
   // Persist session across refreshes
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
+    
+    // Check if URL is a session link
+    const path = window.location.pathname;
+    if (path.startsWith("/session/")) {
+      const id = path.split("/session/")[1];
+      if (id) {
+        setMeetingId(id);
+        setPage("session-room");
+      }
+    }
+
     if (token && storedUser) {
       try {
         setUser(JSON.parse(storedUser));
         setAuthed(true);
         setHasSignedUp(true);
-        setPage("dashboard");
+        // Only go to dashboard if we aren't already on a session page
+        if (!path.startsWith("/session/")) setPage("dashboard");
       } catch (e) {
         console.error("Failed to parse user session", e);
       }
@@ -1280,11 +2631,12 @@ export default function App() {
     setUser(u); setAuthed(true);
     if (mode === "signup") setHasSignedUp(true);
   };
-  const goTo = (p) => {
-    if (["dashboard","browse","messages","schedule","resources","profile","setup","userprofile"].includes(p) && !authed) {
+  const goTo = (p, mId = null) => {
+    if (["dashboard","browse","messages","videos","schedule","resources","profile","setup","userprofile"].includes(p) && !authed) {
       setPage(hasSignedUp ? "login" : "signup");
       return;
     }
+    if (mId) setMeetingId(mId);
     setPage(p);
   };
   // Once signed up, landing always redirects to login
@@ -1298,13 +2650,15 @@ export default function App() {
       {page==="login" && <Auth mode="login" setPage={setPage} onAuth={(u)=>onAuth(u,"login")} addToast={addToast}/>}
       {page==="signup" && <Auth mode="signup" setPage={setPage} onAuth={(u)=>onAuth(u,"signup")} addToast={addToast}/>}
       {page==="setup" && <ProfileSetup user={user} setUser={setUser} setPage={setPage} addToast={addToast}/>}
-      {page==="dashboard" && <Dashboard user={user} setPage={goTo}/>}
+      {page==="dashboard" && <Dashboard user={user} setPage={goTo} addToast={addToast}/>}
       {page==="browse" && <Browse setPage={goTo} setSelectedUser={setSelectedUser} addToast={addToast} user={user}/>}
       {page==="userprofile" && <UserProfile u={selectedUser} setPage={goTo} addToast={addToast}/>}
-      {page==="messages" && <Messages setPage={goTo} selectedUser={selectedUser}/>}
+      {page === "messages" && <Messages setPage={goTo} selectedUser={selectedUser} user={user} />}
       {page==="schedule" && <Schedule setPage={goTo} addToast={addToast}/>}
+      {page==="videos" && <VideoLearning setPage={goTo} addToast={addToast}/>}
       {page==="resources" && <Resources setPage={goTo} addToast={addToast}/>}
       {page==="profile" && <MyProfile user={user} setPage={goTo}/>}
+      {page==="session-room" && <SessionRoom setPage={goTo} meetingId={meetingId} user={user} />}
       <Toast toasts={toasts}/>
     </div>
   );
