@@ -92,12 +92,7 @@
   {
     "_id": "69c8a828b1da88f0c3003c95",
     "name": "keerti",
-    "teach": [
-      {
-        "name": "Data Structures",
-        "proficiency": "Intermediate"
-      }
-    ],
+    "teach": [],
     "learn": [],
     "careerGoal": ""
   },
@@ -122,6 +117,65 @@
   {
     "_id": "69d0663d1f91955224db6831",
     "name": "b",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69d5233eaf6d00cc7784b32b",
+    "name": "hari",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69d52d4627dfff59927a8087",
+    "name": "z",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69d6f1825ab1a98422894eba",
+    "name": "sat",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69d7768f946e3a5c1cd48d31",
+    "name": "jessy",
+    "teach": [],
+    "learn": [
+      "Data Structures"
+    ],
+    "careerGoal": ""
+  },
+  {
+    "_id": "69dddfa3cf32041e3b3b44bb",
+    "name": "kra",
+    "teach": [],
+    "learn": [],
+    "careerGoal": "Data Scientist"
+  },
+  {
+    "_id": "6a00343990290d0ce892ad6e",
+    "name": "reshma",
+    "teach": [],
+    "learn": [],
+    "careerGoal": ""
+  },
+  {
+    "_id": "6a015d43c1b24bd29d664391",
+    "name": "jay",
     "teach": [],
     "learn": [
       "Data Structures"

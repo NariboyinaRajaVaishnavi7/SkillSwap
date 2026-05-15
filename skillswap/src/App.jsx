@@ -613,7 +613,7 @@ function Landing({ setPage }) {
   );
 }
 
-const API_URL = "http://127.0.0.1:5000";
+const API_URL = "http://localhost:5000";
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 function Auth({ mode, setPage, onAuth, addToast }) {
@@ -686,10 +686,13 @@ function ProfileSetup({ user, setUser, setPage, addToast }) {
   const addLearn = () => { if(learnInput.trim()){ setLearnSkills([...learnSkills,learnInput.trim()]); setLearnInput(""); }};
   const done = async () => { 
     try {
+      const finalLearnSkills = [...learnSkills];
+      if (learnInput.trim()) finalLearnSkills.push(learnInput.trim());
+
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/profile`, {
         method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ ...form, teach: teachSkills, learn: learnSkills })
+        body: JSON.stringify({ ...form, teach: teachSkills, learn: finalLearnSkills })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save profile");
@@ -753,7 +756,7 @@ function ProfileSetup({ user, setUser, setPage, addToast }) {
           </div>
           <div style={{display:"flex",gap:12,marginTop:32}}>
             <button className="btn btn-secondary" onClick={()=>setStep(1)}>← Back</button>
-            <button className="btn btn-primary" onClick={()=>setStep(3)}>Continue →</button>
+            <button className="btn btn-primary" onClick={() => { if(teachInput.trim()) addTeach(); setStep(3); }}>Continue →</button>
           </div>
         </div>
       )}
@@ -1226,7 +1229,6 @@ function UserProfile({ u, setPage, addToast }) {
     <DashLayout page="browse" setPage={setPage}>
       <div style={{maxWidth:700}}>
         <button className="btn btn-ghost btn-sm" style={{marginBottom:20}} onClick={()=>setPage("browse")}>← Back to matches</button>
-        <div className="profile-banner"></div>
         <div className="profile-info">
           <div className="profile-avatar-lg">{u.emoji || "🙂"}</div>
           <div className="profile-name">{u.name}</div>
@@ -2043,7 +2045,6 @@ function MyProfile({ user, setPage }) {
   return (
     <DashLayout page="profile" setPage={setPage}>
       <div style={{maxWidth:700}}>
-        <div className="profile-banner"></div>
         <div className="profile-info">
           <div className="profile-avatar-lg">{user?.emoji||"🙂"}</div>
           <div className="profile-name">{user?.name||"Your Name"}</div>

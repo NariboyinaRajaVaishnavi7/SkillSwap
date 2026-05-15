@@ -1085,6 +1085,6 @@ app.get("/", (req, res) => {
   res.json({ status: "Server is running", database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected" });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
