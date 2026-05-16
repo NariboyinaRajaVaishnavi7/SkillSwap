@@ -613,7 +613,7 @@ function Landing({ setPage }) {
   );
 }
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://skillswap-ubpo.onrender.com";
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 function Auth({ mode, setPage, onAuth, addToast }) {
@@ -1031,7 +1031,7 @@ function Browse({ setPage, setSelectedUser, addToast, user }) {
 
   const fetchConnections = () => {
     const token = localStorage.getItem("token");
-    fetch("http://localhost:5000/connections", {
+    fetch("https://skillswap-ubpo.onrender.com/connections", {
       headers: { "Authorization": `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -1381,7 +1381,7 @@ function Messages({ setPage, selectedUser, user }) {
   };
 
   useEffect(() => {
-    socketRef.current = io("http://localhost:5000");
+    socketRef.current = io("https://skillswap-ubpo.onrender.com");
     const currentUserId = user?.id || user?._id;
 
     if (currentUserId) {
@@ -1428,7 +1428,7 @@ function Messages({ setPage, selectedUser, user }) {
     const token = localStorage.getItem("token");
     const currentUserId = user?.id || user?._id;
 
-    fetch("http://localhost:5000/connections", {
+    fetch("https://skillswap-ubpo.onrender.com/connections", {
       headers: { "Authorization": `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -1572,7 +1572,7 @@ function Schedule({ setPage, addToast }) {
     const localUser = JSON.parse(localStorage.getItem("user") || "{}");
     const myId = localUser.id || localUser._id;
 
-    fetch("http://localhost:5000/connections", { headers: { "Authorization": `Bearer ${token}` } })
+    fetch("https://skillswap-ubpo.onrender.com/connections", { headers: { "Authorization": `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         const accepted = data.filter(c => c.status === "accepted");

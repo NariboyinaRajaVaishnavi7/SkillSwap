@@ -1,3 +1,4 @@
+const cors = require("cors");
 const dns = require("dns");
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 if (dns.setDefaultResultOrder) {
@@ -16,6 +17,10 @@ const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 
 const app = express();
+app.use(cors({
+  origin: "https://skill-swap-five-zeta.vercel.app",
+  credentials: true
+}));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
