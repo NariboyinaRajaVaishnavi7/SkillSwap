@@ -18,9 +18,12 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 app.use(cors({
-  origin: "https://skill-swap-five-zeta.vercel.app",
+  origin: ["https://skill-swap-five-zeta.vercel.app",
+           "http://localhost:5173"
+          ],
   credentials: true
 }));
+app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
